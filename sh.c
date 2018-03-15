@@ -145,17 +145,16 @@ getcmd(char *buf, int nbuf)
 
 char * hist[MAX_HISTORY];
 void shiftHistoryArray(char * newStr){
-  char* toAdd=malloc(strlen(newStr)); 
-  strcpy(toAdd,newStr);
   int i=0;
   for(i =MAX_HISTORY-1;i>0;i--){
     hist[i]=hist[i-1];
   }
-  hist[0]=toAdd;
+  hist[0]=malloc(strlen(newStr));
+  strcpy(hist[0],newStr);
 }
 void writeToHistoryFile(void){
   int fd;
-  if((fd=open("history",O_RDWR))<0)
+  if((fd=open("history",O_RDWR|O_CREATE))<0)
   {
     exit();
   }
@@ -194,16 +193,22 @@ void processcmd(char *buf){
       return;
     }
     if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='o' && buf[5]=='r' && buf[6]=='y'){
-        if(buf[7]==' ' && buf[8]=='-' && buf[9]=='l' && buf[10]==' ' ){
+        if(buf[7]==' ' && buf[8]=='-' && buf[9]=='l' && buf[10]==' '){
             int i=atoi(buf+11);
-            buf=hist[MAX_HISTORY-i];
+            int size=0;
+            for(size=0;size<MAX_HISTORY;size++){
+              if(hist[size]==0){
+                break;
+              }
+            }
+            buf=hist[size-i];
             processcmd(buf);
             return;
     }
         int i=0,j=1;
         for(i=MAX_HISTORY-1;i>=0;i--){
             if(hist[i]!=0)
-                printf(2,"%d  %s",j++,hist[i]);
+                printf(2,"%d. %s",j++,hist[i]);
             
         }
         return;
@@ -228,7 +233,7 @@ main(void)
     int read;
     int counter=0;
 
-    fp = open("history", O_RDWR | O_CREATE);
+    fp = open("history", O_RDWR|O_CREATE);
     if (fp == -1)
         exit();
 
