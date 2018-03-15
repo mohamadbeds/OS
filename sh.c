@@ -183,6 +183,39 @@ int getline(char** line,int * len,int fd){
   }
 return index;
 }
+
+void processcmd(char *buf){
+       
+     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
+      // Chdir must be called by the parent, not the child.
+      buf[strlen(buf)-1] = 0;  // chop \n
+      if(chdir(buf+3) < 0)
+        printf(2, "cannot cd %s\n", buf+3);
+      return;
+    }
+    if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='o' && buf[5]=='r' && buf[6]=='y'){
+        if(buf[7]==' ' && buf[8]=='-' && buf[9]=='l' && buf[10]==' ' ){
+            int i=atoi(buf+11);
+            buf=hist[MAX_HISTORY-i];
+            processcmd(buf);
+            return;
+    }
+        int i=0,j=1;
+        for(i=MAX_HISTORY-1;i>=0;i--){
+            if(hist[i]!=0)
+                printf(2,"%d  %s",j++,hist[i]);
+            
+        }
+        return;
+    }
+
+
+    if(fork1() == 0)
+      runcmd(parsecmd(buf));
+    wait();   
+
+}
+
 int
 main(void)
 {
@@ -219,25 +252,7 @@ main(void)
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
     shiftHistoryArray(buf);
-    if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
-      // Chdir must be called by the parent, not the child.
-      buf[strlen(buf)-1] = 0;  // chop \n
-      if(chdir(buf+3) < 0)
-        printf(2, "cannot cd %s\n", buf+3);
-      continue;
-    }
-    if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='o' && buf[5]=='r' && buf[6]=='y'){
-        int i=0,j=1;
-        for(i=MAX_HISTORY-1;i>=0;i--){
-            if(hist[i]!=0)
-                printf(2,"%d  %s",j++,hist[i]);
-            
-        }
-        continue;
-    }
-    if(fork1() == 0)
-      runcmd(parsecmd(buf));
-    wait();
+    processcmd(buf);
   }
   writeToHistoryFile();
   exit();
