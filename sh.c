@@ -145,15 +145,17 @@ getcmd(char *buf, int nbuf)
 
 char * hist[MAX_HISTORY];
 void shiftHistoryArray(char * newStr){
+  char* toAdd=malloc(strlen(newStr)); 
+  strcpy(toAdd,newStr);
   int i=0;
-  for(i =0;i<MAX_HISTORY-1;i++){
-    hist[i+1]=hist[i];
+  for(i =MAX_HISTORY-1;i>0;i--){
+    hist[i]=hist[i-1];
   }
-  hist[0]=newStr;
+  hist[0]=toAdd;
 }
 void writeToHistoryFile(void){
   int fd;
-  if((fd=open("/history",O_RDWR))<0)
+  if((fd=open("history",O_RDWR))<0)
   {
     exit();
   }
@@ -193,7 +195,7 @@ main(void)
     int read;
     int counter=0;
 
-    fp = open("/history", O_RDWR);
+    fp = open("history", O_RDWR | O_CREATE);
     if (fp == -1)
         exit();
 
@@ -224,11 +226,14 @@ main(void)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
     }
-    if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='t' && buf[5]=='r' && buf[6]=='y'){
-        int i=0;
-        for(i=0;i<MAX_HISTORY;i++){
-          printf(2,"%s",hist[i]);
+    if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='o' && buf[5]=='r' && buf[6]=='y'){
+        int i=0,j=1;
+        for(i=MAX_HISTORY-1;i>=0;i--){
+            if(hist[i]!=0)
+                printf(2,"%d  %s",j++,hist[i]);
+            
         }
+        continue;
     }
     if(fork1() == 0)
       runcmd(parsecmd(buf));
