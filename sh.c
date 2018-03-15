@@ -4,18 +4,16 @@
 #include "user.h"
 #include "fcntl.h"
 
+
 // Parsed command representation
 #define EXEC  1
 #define REDIR 2
 #define PIPE  3
 #define LIST  4
 #define BACK  5
-#define HISTORY 6
 
-char * History[MAX_HISTORY];
-
-#define MAX_HISTORY 16
 #define MAXARGS 10
+#define MAX_HISTORY 16
 
 struct cmd {
   int type;
@@ -145,11 +143,68 @@ getcmd(char *buf, int nbuf)
   return 0;
 }
 
+char * hist[MAX_HISTORY];
+void shiftHistoryArray(char * newStr){
+  int i=0;
+  for(i =0;i<MAX_HISTORY-1;i++){
+    hist[i+1]=hist[i];
+  }
+  hist[0]=newStr;
+}
+void writeToHistoryFile(void){
+  int fd;
+  if((fd=open("/history",O_RDWR))<0)
+  {
+    exit();
+  }
+  int i=0;
+  for(i=0;i<MAX_HISTORY;i++){
+    write(fd,hist[i],strlen(hist[i]));
+    write(fd,"\n",1);
+  }
+  close(fd);
+}
+int getline(char** line,int * len,int fd){
+  char c=0;
+  int index=0;
+  char * l=malloc(128);
+  while((c=read(fd,&c,1)) >0){
+    if(c=='\n'){
+      l[index]=0;
+      *line=l;
+      *len=index;
+      break;
+    }else {
+      l[index]=c;
+      index++;
+    }
+  }
+return index;
+}
 int
 main(void)
 {
   static char buf[100];
   int fd;
+
+    int fp;
+    char * line = 0;
+    int len = 0;
+    int read;
+    int counter=0;
+
+    fp = open("/history", O_RDWR);
+    if (fp == -1)
+        exit();
+
+    while (((read = getline(&line, &len, fp)) > 0) && counter<MAX_HISTORY && 0) {
+      hist[counter]=line;
+      counter++;
+    }
+
+    close(fp);
+   // if (line)
+        //free(line);
 
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
@@ -161,20 +216,25 @@ main(void)
 
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
+    shiftHistoryArray(buf);
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Chdir must be called by the parent, not the child.
       buf[strlen(buf)-1] = 0;  // chop \n
       if(chdir(buf+3) < 0)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
-    }else if(buf[0] == 'h' && buf[1] == 'i' && buf[2] == 's' && buf[3] == 't' && buf[4] == 'o' && buf[5] == 'r' && buf[6] == 'y'){
-        printf(2,"%s\n");
-        continue;   
+    }
+    if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='t' && buf[5]=='r' && buf[6]=='y'){
+        int i=0;
+        for(i=0;i<MAX_HISTORY;i++){
+          printf(2,"%s",hist[i]);
+        }
     }
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();
   }
+  writeToHistoryFile();
   exit();
 }
 
