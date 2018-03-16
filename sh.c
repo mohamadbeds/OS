@@ -2,7 +2,7 @@
 
 #include "types.h"
 #include "user.h"
-#include "fcntl.h"
+#include "fcntl.h"  
 
 
 // Parsed command representation
@@ -14,6 +14,7 @@
 
 #define MAXARGS 10
 #define MAX_HISTORY 16
+
 
 struct cmd {
   int type;
@@ -145,16 +146,17 @@ getcmd(char *buf, int nbuf)
 
 char * hist[MAX_HISTORY];
 void shiftHistoryArray(char * newStr){
+  char* toAdd=malloc(strlen(newStr)); 
+  strcpy(toAdd,newStr);
   int i=0;
   for(i =MAX_HISTORY-1;i>0;i--){
     hist[i]=hist[i-1];
   }
-  hist[0]=malloc(strlen(newStr));
-  strcpy(hist[0],newStr);
+  hist[0]=toAdd;
 }
 void writeToHistoryFile(void){
   int fd;
-  if((fd=open("history",O_RDWR|O_CREATE))<0)
+  if((fd=open("history",O_RDWR))<0)
   {
     exit();
   }
@@ -193,22 +195,16 @@ void processcmd(char *buf){
       return;
     }
     if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='o' && buf[5]=='r' && buf[6]=='y'){
-        if(buf[7]==' ' && buf[8]=='-' && buf[9]=='l' && buf[10]==' '){
+        if(buf[7]==' ' && buf[8]=='-' && buf[9]=='l' && buf[10]==' ' ){
             int i=atoi(buf+11);
-            int size=0;
-            for(size=0;size<MAX_HISTORY;size++){
-              if(hist[size]==0){
-                break;
-              }
-            }
-            buf=hist[size-i];
+            buf=hist[MAX_HISTORY-i];
             processcmd(buf);
             return;
     }
         int i=0,j=1;
         for(i=MAX_HISTORY-1;i>=0;i--){
             if(hist[i]!=0)
-                printf(2,"%d. %s",j++,hist[i]);
+                printf(2,"%d  %s",j++,hist[i]);
             
         }
         return;
@@ -218,6 +214,47 @@ void processcmd(char *buf){
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();   
+
+}
+
+
+void replaceVars(char *buf){
+    int i=0;int start=0;int terminate=1;int stat=0;int j=0;
+    char* newStr=malloc(128);
+    char var[32];
+    for(i=0;i<32;i++)
+        var[i]=0;
+    i=0;
+
+    while(terminate){
+    for(;i<strlen(buf);i++)
+        if(buf[i]=='$'){
+            stat=i;
+            break;
+        }
+        else newStr[j++]=buf[i];
+       
+    for(i=i+1;i<strlen(buf);i++)
+        if(buf[i]=='$' || buf[i]==' ' || buf[i]==10){
+            break;
+        }else
+            var[start++]=buf[i];
+
+        if(start>0){
+        stat=getvar(var,newStr+j);
+        j=strlen(newStr);
+        if(stat!=0){
+            printf(2,"error");
+            exit();
+        }
+        }
+        if(i>=strlen(buf))
+            terminate=0;
+        start=0;
+        for(stat=0;stat<32;stat++)
+            var[stat]=0;
+    }
+    strcpy(buf,newStr);
 
 }
 
@@ -233,7 +270,7 @@ main(void)
     int read;
     int counter=0;
 
-    fp = open("history", O_RDWR|O_CREATE);
+    fp = open("history", O_RDWR | O_CREATE);
     if (fp == -1)
         exit();
 
@@ -256,6 +293,16 @@ main(void)
 
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
+    if(buf[1]=='='){
+        char arr[32];
+        int i;
+         for(i=0;i<32;i++)
+            arr[i]=0;
+         buf[3]=0;
+        arr[0]='a';
+        setvar(arr,buf+2);
+        continue;
+    } 
     shiftHistoryArray(buf);
     processcmd(buf);
   }
@@ -421,7 +468,7 @@ parsecmd(char *s)
 {
   char *es;
   struct cmd *cmd;
-
+  replaceVars(s);
   es = s + strlen(s);
   cmd = parseline(&s, es);
   peek(&s, es, "");
