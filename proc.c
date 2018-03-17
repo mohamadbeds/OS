@@ -21,8 +21,6 @@ extern void trapret(void);
 static void wakeup1(void *chan);
 
 
-
-
 typedef struct keyValue{
  char var[32];
  char val[128];
@@ -38,6 +36,29 @@ int isNotSet(char *var){
     return 1;
 }
 
+
+
+int wait2(int pid,int* wtime,int* rtime,int* iotime){
+//     struct proc *p;
+//     struct proc *curr=myproc();     
+     
+     *wtime=5;
+//     wait(pid);
+ //    acquire(&ptable.lock);
+     
+
+//    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+//      if(p->parent == curr && pid ==p->pid){
+//          *wtime=p->etime - p->ctime - p->rtime - p->iotime;
+//          return 0;
+//      }
+        
+
+//    }
+//     release(&ptable.lock);
+  
+    return -1;
+}
 
 
 int addVariable(char* variable,char* value){
@@ -284,6 +305,8 @@ fork(void)
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
   pid = np->pid;
+  
+  np->ctime=ticks;
 
   acquire(&ptable.lock);
 
