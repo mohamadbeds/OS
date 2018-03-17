@@ -193,7 +193,7 @@ int getline(char** line,int * len,int fd){
 return index;
 }
 
-void replaceVars(char *buf){
+char* replaceVars(char *buf){
     int i=0;int start=0;int terminate=1;int j=0;
     char newStr[128];
     memset(newStr,0,128);
@@ -222,16 +222,15 @@ void replaceVars(char *buf){
         start=0;
         memset(var,0,32);
     }
-    printf(2,"!!!!%s!!!\n",newStr);
     strcpy(buf,newStr);
-    printf(2,"...%s...\n",buf);
+    return buf;
 }
 
 
 
 void processcmd(char *buf){
-           replaceVars(buf);
-           printf(2,"----%s\n",buf);
+    
+           buf=replaceVars(buf);
      if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Chdir must be called by the parent, not the child.
       buf[strlen(buf)-1] = 0;  // chop \n
@@ -249,7 +248,6 @@ void processcmd(char *buf){
               }
             }
             buf=hist[size-i];
-            printf(2,"%s\n",buf);
             processcmd(buf);
             return;
     }
@@ -260,17 +258,6 @@ void processcmd(char *buf){
             
         }
         return;
-    }
-    if(buf[0]=='g' && buf[1]=='e' && buf[2]=='t'){
-      char val[122];
-      getVariable("x",val);
-      printf(2,"%s\n",val);
-      return;
-    }
-    if(buf[0]=='r' && buf[1]=='e' && buf[2]=='m'){
-      printf(2,"WTF\n");
-      printf(2,"%d\n",remVariable("x"));
-      return;
     }
 
 
