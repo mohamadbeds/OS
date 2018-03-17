@@ -7,56 +7,32 @@
 #include "mmu.h"
 #include "proc.h"
 
-struct keyValue{
- char* var;
- char* val;
-}
-    
-struct keyValue* variables[MAX_VARIABLES];
 
 
-int setVariable(char* variable, char* value){
-   int i;
-   for(i=0;i<MAX_VARIABLES;i++)
-       if(variables[i]!=0){
-           if(strcmp(variables[i]->var,variable)==0)
-               strcpy(variables[i]->val,value);
-       }else {
-           struct keyValue* pair=(sizeof(keyValue));
-           strcpy(pair->var,variable);
-           strcpy(pair->val,value);
-       }
-    return 1;
+int sys_setVariable(void){
+     char* var[32];
+     char* val[128];
+
+    argstr(0, var);
+    argstr(1, val);
+    return setVariable(*var,*val);
 }
 
-int getVariable(char* variable, char* value){
-    int i;
-     for(i=0;i<MAX_VARIABLES;i++)
-       if(variables[i]!=0){
-           if(strcmp(variables[i]->var,variable)==0)
-               value=variables[i]->val;
-    
-    
+int sys_getVariable(void){
+    char* var[32];
+    char* val[128];
+
+    argstr(0, var);
+    argstr(1, val);
+    return getVariable(*var,*val);
 }
 
-
-int sys_setvar(void)
-{
-  char* var,val;
-
-  argstr(0, &var);
-  argstr(1, &val);
-  return setVariable(var,val);
+int sys_remVariable(void){
+    char* var[32];
+    argstr(0, var);
+    return remVariable(*var);
 }
 
-int sys_getvar(void)
-{
-  char* var,val;
-
-  argstr(0, &var);
-  argstr(1, &val);
-  return getVariable(var,val);
-}
 
 int sys_yield(void)
 {
