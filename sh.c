@@ -2,7 +2,7 @@
 
 #include "types.h"
 #include "user.h"
-#include "fcntl.h"  
+#include "fcntl.h"
 
 
 // Parsed command representation
@@ -11,10 +11,10 @@
 #define PIPE  3
 #define LIST  4
 #define BACK  5
+#define ASSIGN 6
 
 #define MAXARGS 10
 #define MAX_HISTORY 16
-
 
 struct cmd {
   int type;
@@ -46,6 +46,11 @@ struct listcmd {
   struct cmd *left;
   struct cmd *right;
 };
+struct assigncmd {
+  int type;
+  char var[32];
+  char val[128];
+};
 
 struct backcmd {
   int type;
@@ -66,6 +71,7 @@ runcmd(struct cmd *cmd)
   struct listcmd *lcmd;
   struct pipecmd *pcmd;
   struct redircmd *rcmd;
+  struct assigncmd *acmd;
 
   if(cmd == 0)
     exit();
@@ -81,7 +87,10 @@ runcmd(struct cmd *cmd)
     exec(ecmd->argv[0], ecmd->argv);
     printf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
-
+  case ASSIGN:
+    acmd=(struct assigncmd*)cmd;
+    setVariable(acmd->var,acmd->val);
+    break;
   case REDIR:
     rcmd = (struct redircmd*)cmd;
     close(rcmd->fd);
@@ -146,17 +155,16 @@ getcmd(char *buf, int nbuf)
 
 char * hist[MAX_HISTORY];
 void shiftHistoryArray(char * newStr){
-  char* toAdd=malloc(strlen(newStr)); 
-  strcpy(toAdd,newStr);
   int i=0;
   for(i =MAX_HISTORY-1;i>0;i--){
     hist[i]=hist[i-1];
   }
-  hist[0]=toAdd;
+  hist[0]=malloc(strlen(newStr));
+  strcpy(hist[0],newStr);
 }
 void writeToHistoryFile(void){
   int fd;
-  if((fd=open("history",O_RDWR))<0)
+  if((fd=open("history",O_RDWR|O_CREATE))<0)
   {
     exit();
   }
@@ -185,51 +193,16 @@ int getline(char** line,int * len,int fd){
 return index;
 }
 
-void processcmd(char *buf){
-       
-     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
-      // Chdir must be called by the parent, not the child.
-      buf[strlen(buf)-1] = 0;  // chop \n
-      if(chdir(buf+3) < 0)
-        printf(2, "cannot cd %s\n", buf+3);
-      return;
-    }
-    if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='o' && buf[5]=='r' && buf[6]=='y'){
-        if(buf[7]==' ' && buf[8]=='-' && buf[9]=='l' && buf[10]==' ' ){
-            int i=atoi(buf+11);
-            buf=hist[MAX_HISTORY-i];
-            processcmd(buf);
-            return;
-    }
-        int i=0,j=1;
-        for(i=MAX_HISTORY-1;i>=0;i--){
-            if(hist[i]!=0)
-                printf(2,"%d  %s",j++,hist[i]);
-            
-        }
-        return;
-    }
-
-
-    if(fork1() == 0)
-      runcmd(parsecmd(buf));
-    wait();   
-
-}
-
-
 void replaceVars(char *buf){
-    int i=0;int start=0;int terminate=1;int stat=0;int j=0;
-    char* newStr=malloc(128);
+    int i=0;int start=0;int terminate=1;int j=0;
+    char newStr[128];
+    memset(newStr,0,128);
     char var[32];
-    for(i=0;i<32;i++)
-        var[i]=0;
-    i=0;
+    memset(var,0,32);
 
     while(terminate){
     for(;i<strlen(buf);i++)
         if(buf[i]=='$'){
-            stat=i;
             break;
         }
         else newStr[j++]=buf[i];
@@ -241,27 +214,78 @@ void replaceVars(char *buf){
             var[start++]=buf[i];
 
         if(start>0){
-        stat=getvar(var,newStr+j);
+        getVariable(var,newStr+j);
         j=strlen(newStr);
-        if(stat!=0){
-            printf(2,"error");
-            exit();
-        }
         }
         if(i>=strlen(buf))
             terminate=0;
         start=0;
-        for(stat=0;stat<32;stat++)
-            var[stat]=0;
+        memset(var,0,32);
     }
+    printf(2,"!!!!%s!!!\n",newStr);
     strcpy(buf,newStr);
+    printf(2,"...%s...\n",buf);
+}
+
+
+
+void processcmd(char *buf){
+           replaceVars(buf);
+           printf(2,"----%s\n",buf);
+     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
+      // Chdir must be called by the parent, not the child.
+      buf[strlen(buf)-1] = 0;  // chop \n
+      if(chdir(buf+3) < 0)
+        printf(2, "cannot cd %s\n", buf+3);
+      return;
+    }
+    if(buf[0]=='h' && buf[1]=='i' && buf[2]=='s' && buf[3]=='t' && buf[4]=='o' && buf[5]=='r' && buf[6]=='y'){
+        if(buf[7]==' ' && buf[8]=='-' && buf[9]=='l' && buf[10]==' '){
+            int i=atoi(buf+11);
+            int size=0;
+            for(size=0;size<MAX_HISTORY;size++){
+              if(hist[size]==0){
+                break;
+              }
+            }
+            buf=hist[size-i];
+            printf(2,"%s\n",buf);
+            processcmd(buf);
+            return;
+    }
+        int i=0,j=1;
+        for(i=MAX_HISTORY-1;i>=0;i--){
+            if(hist[i]!=0)
+                printf(2,"%d. %s",j++,hist[i]);
+            
+        }
+        return;
+    }
+    if(buf[0]=='g' && buf[1]=='e' && buf[2]=='t'){
+      char val[122];
+      getVariable("x",val);
+      printf(2,"%s\n",val);
+      return;
+    }
+    if(buf[0]=='r' && buf[1]=='e' && buf[2]=='m'){
+      printf(2,"WTF\n");
+      printf(2,"%d\n",remVariable("x"));
+      return;
+    }
+
+
+    if(fork1() == 0)
+      runcmd(parsecmd(buf));
+    wait();   
 
 }
+
+
 
 int
 main(void)
 {
-  static char buf[100];
+  static char buf[128];
   int fd;
 
     int fp;
@@ -270,7 +294,7 @@ main(void)
     int read;
     int counter=0;
 
-    fp = open("history", O_RDWR | O_CREATE);
+    fp = open("history", O_RDWR|O_CREATE);
     if (fp == -1)
         exit();
 
@@ -290,21 +314,14 @@ main(void)
       break;
     }
   }
-
+  //int j;
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
-    if(buf[1]=='='){
-        char arr[32];
-        int i;
-         for(i=0;i<32;i++)
-            arr[i]=0;
-         buf[3]=0;
-        arr[0]='a';
-        setvar(arr,buf+2);
-        continue;
-    } 
+
     shiftHistoryArray(buf);
+
     processcmd(buf);
+  //  for(j=0;j<100;j++)buf[j]=0;
   }
   writeToHistoryFile();
   exit();
@@ -385,6 +402,22 @@ listcmd(struct cmd *left, struct cmd *right)
 }
 
 struct cmd*
+assigncmd(char *left,char *right)
+{ 
+  
+  struct assigncmd *cmd;
+
+  cmd = malloc(sizeof(*cmd));
+  memset(cmd, 0, sizeof(*cmd));
+  cmd->type = ASSIGN;
+  strcpy(cmd->var,left);
+  strcpy(cmd->val,right);
+  int i;
+  for(i=0;i<strlen(cmd->val);i++)if(cmd->val[i]=='\n'){cmd->val[i]=0; break;}
+  return (struct cmd*)cmd;
+}
+
+struct cmd*
 backcmd(struct cmd *subcmd)
 {
   struct backcmd *cmd;
@@ -416,6 +449,7 @@ gettoken(char **ps, char *es, char **q, char **eq)
   switch(*s){
   case 0:
     break;
+  case '=':
   case '|':
   case '(':
   case ')':
@@ -465,10 +499,9 @@ struct cmd *nulterminate(struct cmd*);
 
 struct cmd*
 parsecmd(char *s)
-{
+{ 
   char *es;
   struct cmd *cmd;
-  replaceVars(s);
   es = s + strlen(s);
   cmd = parseline(&s, es);
   peek(&s, es, "");
@@ -480,11 +513,36 @@ parsecmd(char *s)
   return cmd;
 }
 
+int isAssign(char *cmd){
+  int i=0;
+  int foundEq=0;
+  for(i=0;i<strlen(cmd);i++){
+    if(cmd[i]=='=')return i+1;
+    if((!foundEq )&& !((cmd[i]>='a' && cmd[i] <='z') || (cmd[i]>='A' && cmd[i] <='Z')))
+      return -1;
+  }
+  return -1;
+}
+void strncpyy(char *dest,char *src,int size){
+  int i;
+  for(i=0;i<size;i++){
+    dest[i]=src[i];
+    if(src[i]==0)break;
+  }
+  dest[size]=0;
+}
 struct cmd*
 parseline(char **ps, char *es)
 {
   struct cmd *cmd;
-
+  int x=isAssign(*ps);
+  if(x!=-1){
+    char temp[32];
+    strncpyy(temp,*ps,x-1);
+    cmd=assigncmd(temp,*ps+x);
+    *ps=es;
+    return cmd;
+  }
   cmd = parsepipe(ps, es);
   while(peek(ps, es, "&")){
     gettoken(ps, es, 0, 0);
@@ -622,7 +680,8 @@ nulterminate(struct cmd *cmd)
     nulterminate(lcmd->left);
     nulterminate(lcmd->right);
     break;
-
+  case ASSIGN:
+    break;
   case BACK:
     bcmd = (struct backcmd*)cmd;
     nulterminate(bcmd->cmd);
