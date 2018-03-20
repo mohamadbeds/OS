@@ -4,7 +4,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "x86.h"
-#include "procSRT.h"
+#include "proc.h"
 #include "spinlock.h"
 #define MAX_VARIABLES 32
 struct
@@ -240,7 +240,7 @@ void userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-
+  p->approxtime=QUANTUM;
   release(&ptable.lock);
 }
 
@@ -313,7 +313,7 @@ int fork(void)
   np->iotime = 0;
   np->etime = 0;
   np->approxtime = QUANTUM; //init the approximation time*******************
-
+  curproc->approxtime= QUANTUM; //-******************************************** should reset father too?
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
@@ -491,41 +491,53 @@ void scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    min = ptable.proc->approxtime;
-    np = ptable.proc;
+    min = 0;
+    np = 0;
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      if (p->state != RUNNABLE)
-        continue;
-      if (p->approxtime < min)
+      if (p->state == RUNNABLE)
       {
-        min = ratio;
         np = p;
+        min = p->approxtime;
+        break;
       }
     }
-    // Switch to chosen process.  It is the process's job
-    // to release ptable.lock and then reacquire it
-    // before jumping back to us.
-    c->proc = np;
-    switchuvm(np);
-    np->state = RUNNING;
+    if (np != 0)
+    {
+      for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+      {
+        if (p->state != RUNNABLE)
+          continue;
+        if (p->approxtime < min)
+        {
+          min = p->approxtime;
+          np = p;
+        }
+      }
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      c->proc = np;
+      switchuvm(np);
+      np->state = RUNNING;
 
-    //acquire(&tickslock);
-    uint before = ticks;
-    //release(&tickslock);
-    np->approxtime = np->approxtime + ALPHA * np->approxtime; //update the approximation time*******************
+      //acquire(&tickslock);
+      uint before = ticks;
+      //release(&tickslock);
+      if (np->rtime >= np->approxtime)
+        np->approxtime = np->rtime + ALPHA * np->rtime; //update the approximation time*******************
 
-    swtch(&(c->scheduler), np->context);
-    switchkvm();
+      swtch(&(c->scheduler), np->context);
+      switchkvm();
 
-    //acquire(&tickslock);
-    np->rtime += ticks - before;
-    //release(&tickslock);
+      //acquire(&tickslock);
+      np->rtime += ticks - before;
+      //release(&tickslock);
 
-    // Process is done running for now.
-    // It should have changed its p->state before coming back.
-    c->proc = 0;
-
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+    }
     release(&ptable.lock);
   }
 }

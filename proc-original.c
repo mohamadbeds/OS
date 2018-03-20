@@ -473,12 +473,6 @@ int wait2(int pid, int *wtime, int *rtime, int *iotime)
 
 
 
-void FCFSscheduler(void){
-  //same scheduler but with no context switch at all
-}
-
-
-
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.

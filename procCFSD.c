@@ -4,7 +4,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "x86.h"
-#include "procCFSD.h"
+#include "proc.h"
 #include "spinlock.h"
 #define MAX_VARIABLES 32
 struct
@@ -240,7 +240,7 @@ void userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-
+  p->priority = 2;
   release(&ptable.lock);
 }
 
@@ -494,47 +494,67 @@ void scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    int decayFactor = ptable.proc->priority * 0.25 + 0.5;
-    int wtime = ticks - ptable.proc->ctime - ptable.proc->iotime - ptable.proc->rtime;
-    int ratio = (ptable.proc->rtime * decayFactor) / (ptable.proc->rtime + wtime);
-    min = ratio;
-    np = ptable.proc;
+    double decayFactor;
+    int wtime;
+    double ratio=-9;
+    min = 0;
+    np = 0;
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      if (p->state != RUNNABLE)
-        continue;
-
-      decayFactor = p->priority * 0.25 + 0.5;
-      wtime = ticks - p->ctime - p->iotime - p->rtime;
-      ratio = (p->rtime * decayFactor) / (p->rtime + wtime);
-      if (ratio < min)
+      if (p->state == RUNNABLE)
       {
-        min=ratio;
         np = p;
+        decayFactor = p->priority * 0.25 + 0.5;
+        wtime = ticks - p->ctime - p->iotime - p->rtime;
+        ratio = (p->rtime * decayFactor) / (p->rtime + wtime);
+        min = ratio;
+        break;
       }
     }
-    // Switch to chosen process.  It is the process's job
-    // to release ptable.lock and then reacquire it
-    // before jumping back to us.
-    c->proc = np;
-    switchuvm(np);
-    np->state = RUNNING;
+    //cprintf("ratio= %d\n",ratio);
+    if (np != 0)
+    {
+      for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+      {
+        if (p->state != RUNNABLE)
+          continue;
 
-    //acquire(&tickslock);
-    uint before = ticks;
-    //release(&tickslock);
+        decayFactor = p->priority * 0.25 + 0.5;
+        wtime = ticks - p->ctime - p->iotime - p->rtime;
+        ratio = (p->rtime * decayFactor) / (p->rtime + wtime);
+        if (ratio < min)
+        {
+          min = ratio;
+          np = p;
+        }
+      }
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      if (np != 0 && np->state==RUNNABLE)
+      {
+        //cprintf(",,,%x\n", cpuid());
 
-    swtch(&(c->scheduler), np->context);
-    switchkvm();
+        c->proc = np;
+        switchuvm(np);
+        np->state = RUNNING;
 
-    //acquire(&tickslock);
-    np->rtime += ticks - before;
-    //release(&tickslock);
+        //acquire(&tickslock);
+        uint before = ticks;
+        //release(&tickslock);
 
-    // Process is done running for now.
-    // It should have changed its p->state before coming back.
-    c->proc = 0;
+        swtch(&(c->scheduler), np->context);
+        switchkvm();
 
+        //acquire(&tickslock);
+        np->rtime += ticks - before;
+        //release(&tickslock);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+    }
     release(&ptable.lock);
   }
 }
