@@ -4,13 +4,12 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "x86.h"
-#include "proc.h"
+#include "procFCFS.h"
 #include "spinlock.h"
 #define MAX_VARIABLES 32
 struct
 {
   struct spinlock lock;
-  int index;
   struct proc proc[NPROC];
 } ptable;
 
@@ -39,17 +38,6 @@ int isNotSet(char *var)
       return 0;
   }
   return 1;
-}
-
-void reduceIndex(int index)
-{
-  int i;
-  struct proc *p;
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-  {
-    if (p->index > index && p->state == RUNNABLE)
-      p->index--;
-  }
 }
 
 int addVariable(char *variable, char *value)
@@ -223,8 +211,6 @@ found:
 // Set up first user process.
 void userinit(void)
 {
-  if (ptable.index == 0)
-    ptable.index = 1;
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
 
@@ -254,7 +240,7 @@ void userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-  p->index = ptable.index++;
+
   release(&ptable.lock);
 }
 
@@ -330,7 +316,7 @@ int fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
-  np->index = ptable.index++;
+
   release(&ptable.lock);
 
   return pid;
@@ -451,7 +437,7 @@ int wait2(int pid, int *wtime, int *rtime, int *iotime)
       if (p->parent != curproc)
         continue;
       havekids = 1;
-      if (p->state == ZOMBIE && p->pid == pid)
+      if (p->state == ZOMBIE && p->pid==pid)
       {
         // Found one.
         *wtime = p->etime - p->ctime - p->rtime - p->iotime;
@@ -482,6 +468,9 @@ int wait2(int pid, int *wtime, int *rtime, int *iotime)
   }
 }
 
+
+
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -495,9 +484,7 @@ void scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  int min;
-  struct proc *np;
-  int notfoundinit=1;
+
   for (;;)
   {
     // Enable interrupts on this processor.
@@ -505,52 +492,33 @@ void scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-
-    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state==RUNNABLE){
-        np=p;
-        min=p->index;
-        notfoundinit=0;
-        break;
-      }
-    }
-    if(notfoundinit)panic("fuck happened!");
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
       if (p->state != RUNNABLE)
         continue;
-      if (p->index < min)
-      {
-        min = p->index;
-        np = p;
-      }
+
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+
+      //acquire(&tickslock);
+      uint before = ticks;
+      //release(&tickslock);
+
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      //acquire(&tickslock);
+      p->rtime += ticks - before;
+      //release(&tickslock);
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
     }
-    // Switch to chosen process.  It is the process's job
-    // to release ptable.lock and then reacquire it
-    // before jumping back to us.
-    c->proc = np;
-    switchuvm(np);
-    np->state = RUNNING;
-
-    //acquire(&tickslock);
-    uint before = ticks;
-    //release(&tickslock);
-
-    swtch(&(c->scheduler), np->context);
-    switchkvm();
-
-    //acquire(&tickslock);
-    np->rtime += ticks - before;
-    //release(&tickslock);
-
-    reduceIndex(np->index);
-    ptable.index--;
-    np->index=2*NPROC;
-
-    // Process is done running for now.
-    // It should have changed its p->state before coming back.
-    c->proc = 0;
-
     release(&ptable.lock);
   }
 }
@@ -585,7 +553,6 @@ void yield(void)
 {
   acquire(&ptable.lock); //DOC: yieldlock
   myproc()->state = RUNNABLE;
-  myproc()->index = ptable.index++;
   sched();
   release(&ptable.lock);
 }
@@ -638,14 +605,16 @@ void sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
+
   //acquire(&tickslock);
   uint before = ticks;
   //release(&tickslock);
 
+
   sched();
 
   //acquire(&tickslock);
-  p->iotime += ticks - before;
+  p->iotime += ticks-before;
   //release(&tickslock);
 
   // Tidy up.
@@ -669,10 +638,7 @@ wakeup1(void *chan)
 
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if (p->state == SLEEPING && p->chan == chan)
-    {
       p->state = RUNNABLE;
-      p->index = ptable.index++;
-    }
 }
 
 // Wake up all processes sleeping on chan.
@@ -698,10 +664,7 @@ int kill(int pid)
       p->killed = 1;
       // Wake process from sleep if necessary.
       if (p->state == SLEEPING)
-      {
         p->state = RUNNABLE;
-        p->index = ptable.index++;
-      }
       release(&ptable.lock);
       return 0;
     }

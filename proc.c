@@ -306,9 +306,9 @@ int fork(void)
 
   pid = np->pid;
 
-  acquire(&tickslock);
+  //acquire(&tickslock);
   np->ctime = ticks;
-  release(&tickslock);
+  //release(&tickslock);
   np->rtime = 0;
   np->iotime = 0;
   np->etime = 0;
@@ -367,9 +367,9 @@ void exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
-  acquire(&tickslock);
+  //acquire(&tickslock);
   curproc->etime = ticks;
-  release(&tickslock);
+  //release(&tickslock);
   sched();
   panic("zombie exit");
 }
@@ -424,25 +424,61 @@ int wait(void)
 int wait2(int pid, int *wtime, int *rtime, int *iotime)
 {
   struct proc *p;
-  struct proc *curr = myproc();
+  int havekids;
+  struct proc *curproc = myproc();
 
-  // wait(pid);
   acquire(&ptable.lock);
-
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  for (;;)
   {
-    if (p->parent == curr && pid == p->pid)
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      *wtime = p->etime - p->ctime - p->rtime - p->iotime;
-      *rtime = p->rtime;
-      *iotime = p->iotime;
-      return 0;
+      if (p->parent != curproc)
+        continue;
+      havekids = 1;
+      if (p->state == ZOMBIE && p->pid==pid)
+      {
+        // Found one.
+        *wtime = p->etime - p->ctime - p->rtime - p->iotime;
+        *rtime = p->rtime;
+        *iotime = p->iotime;
+        kfree(p->kstack);
+        p->kstack = 0;
+        freevm(p->pgdir);
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
+        release(&ptable.lock);
+        return 0;
+      }
     }
-  }
-  release(&ptable.lock);
 
-  return -1;
+    // No point waiting if we don't have any children.
+    if (!havekids || curproc->killed)
+    {
+      release(&ptable.lock);
+      return -1;
+    }
+
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(curproc, &ptable.lock); //DOC: wait-sleep
+  }
 }
+
+
+
+
+
+
+void FCFSscheduler(void){
+  //same scheduler but with no context switch at all
+}
+
+
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -476,16 +512,16 @@ void scheduler(void)
       switchuvm(p);
       p->state = RUNNING;
 
-      acquire(&tickslock);
+      //acquire(&tickslock);
       uint before = ticks;
-      release(&tickslock);
+      //release(&tickslock);
 
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
-      acquire(&tickslock);
+      //acquire(&tickslock);
       p->rtime += ticks - before;
-      release(&tickslock);
+      //release(&tickslock);
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
@@ -577,7 +613,17 @@ void sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
+
+  //acquire(&tickslock);
+  uint before = ticks;
+  //release(&tickslock);
+
+
   sched();
+
+  //acquire(&tickslock);
+  p->iotime += ticks-before;
+  //release(&tickslock);
 
   // Tidy up.
   p->chan = 0;

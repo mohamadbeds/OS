@@ -4,7 +4,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "x86.h"
-#include "proc.h"
+#include "procCFSD.h"
 #include "spinlock.h"
 #define MAX_VARIABLES 32
 struct
