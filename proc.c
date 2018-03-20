@@ -240,7 +240,7 @@ void userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
-
+  p->priority = 2;
   release(&ptable.lock);
 }
 
@@ -312,6 +312,10 @@ int fork(void)
   np->rtime = 0;
   np->iotime = 0;
   np->etime = 0;
+
+  if (curproc->priority == 0)
+    curproc->priority = 2; //**************************************************
+  np->priority = curproc->priority;
 
   acquire(&ptable.lock);
 
@@ -437,7 +441,7 @@ int wait2(int pid, int *wtime, int *rtime, int *iotime)
       if (p->parent != curproc)
         continue;
       havekids = 1;
-      if (p->state == ZOMBIE && p->pid==pid)
+      if (p->state == ZOMBIE && p->pid == pid)
       {
         // Found one.
         *wtime = p->etime - p->ctime - p->rtime - p->iotime;
@@ -468,17 +472,6 @@ int wait2(int pid, int *wtime, int *rtime, int *iotime)
   }
 }
 
-
-
-
-
-
-void FCFSscheduler(void){
-  //same scheduler but with no context switch at all
-}
-
-
-
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -492,7 +485,8 @@ void scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-
+  int min;
+  struct proc *np;
   for (;;)
   {
     // Enable interrupts on this processor.
@@ -500,32 +494,66 @@ void scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+    int decayFactor;
+    int wtime;
+    int ratio=-9;
+    min = 0;
+    np = 0;
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     {
-      if (p->state != RUNNABLE)
-        continue;
+      if (p->state == RUNNABLE)
+      {
+        np = p;
+        decayFactor = p->priority * 0.25 + 0.5;
+        wtime = ticks - p->ctime - p->iotime - p->rtime;
+        ratio = (p->rtime * decayFactor) / (p->rtime + wtime);
+        min = ratio;
+        break;
+      }
+    }
+    //cprintf("ratio= %d\n",ratio);
+    if (np != 0)
+    {
+      for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+      {
+        if (p->state != RUNNABLE)
+          continue;
 
+        decayFactor = p->priority * 0.25 + 0.5;
+        wtime = ticks - p->ctime - p->iotime - p->rtime;
+        ratio = (p->rtime * decayFactor) / (p->rtime + wtime);
+        if (ratio < min)
+        {
+          min = ratio;
+          np = p;
+        }
+      }
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+      if (np != 0 && np->state==RUNNABLE)
+      {
+        cprintf(",,,%x\n", cpuid());
 
-      //acquire(&tickslock);
-      uint before = ticks;
-      //release(&tickslock);
+        c->proc = np;
+        switchuvm(np);
+        np->state = RUNNING;
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
+        //acquire(&tickslock);
+        uint before = ticks;
+        //release(&tickslock);
 
-      //acquire(&tickslock);
-      p->rtime += ticks - before;
-      //release(&tickslock);
+        swtch(&(c->scheduler), np->context);
+        switchkvm();
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+        //acquire(&tickslock);
+        np->rtime += ticks - before;
+        //release(&tickslock);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
     }
     release(&ptable.lock);
   }
@@ -613,16 +641,14 @@ void sleep(void *chan, struct spinlock *lk)
   p->chan = chan;
   p->state = SLEEPING;
 
-
   //acquire(&tickslock);
   uint before = ticks;
   //release(&tickslock);
 
-
   sched();
 
   //acquire(&tickslock);
-  p->iotime += ticks-before;
+  p->iotime += ticks - before;
   //release(&tickslock);
 
   // Tidy up.
