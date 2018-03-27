@@ -4,7 +4,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "x86.h"
-#include "proc.h"
+#include "procSRT.h"
 #include "spinlock.h"
 #define MAX_VARIABLES 32
 struct
@@ -38,6 +38,11 @@ int isNotSet(char *var)
       return 0;
   }
   return 1;
+}
+
+int set_priority(int priority)
+{
+  return -1;
 }
 
 int addVariable(char *variable, char *value)
@@ -482,7 +487,7 @@ void scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  int min;
+  double min;
   struct proc *np;
   for (;;)
   {

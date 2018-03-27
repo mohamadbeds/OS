@@ -4,7 +4,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "x86.h"
-#include "proc.h"
+#include "procCFSD.h"
 #include "spinlock.h"
 #define MAX_VARIABLES 32
 struct
@@ -38,6 +38,12 @@ int isNotSet(char *var)
       return 0;
   }
   return 1;
+}
+
+int set_priority(int priority){
+  if(priority>3 || priority < 1)return -1;
+  myproc()->priority=priority;
+  return 0;
 }
 
 int addVariable(char *variable, char *value)
@@ -485,7 +491,7 @@ void scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  int min;
+  double min;
   struct proc *np;
   for (;;)
   {
@@ -496,7 +502,9 @@ void scheduler(void)
     acquire(&ptable.lock);
     double decayFactor;
     int wtime;
-    double ratio=-9;
+    double temp1;
+    double temp2;
+    double ratio;
     min = 0;
     np = 0;
     for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
@@ -505,8 +513,10 @@ void scheduler(void)
       {
         np = p;
         decayFactor = p->priority * 0.25 + 0.5;
-        wtime = ticks - p->ctime - p->iotime - p->rtime;
-        ratio = (p->rtime * decayFactor) / (p->rtime + wtime);
+        wtime = ticks - (p->ctime + p->iotime + p->rtime);
+        temp1=((double)p->rtime * decayFactor);
+        temp2=((double)p->rtime + (double)wtime);
+        ratio = temp1 / temp2;
         min = ratio;
         break;
       }
@@ -520,17 +530,22 @@ void scheduler(void)
           continue;
 
         decayFactor = p->priority * 0.25 + 0.5;
-        wtime = ticks - p->ctime - p->iotime - p->rtime;
-        ratio = (p->rtime * decayFactor) / (p->rtime + wtime);
-        if (ratio < min)
+        wtime = ticks - (p->ctime + p->iotime + p->rtime);
+        temp1=((double)p->rtime * decayFactor);
+        temp2=((double)p->rtime + (double)wtime);
+        ratio = temp1 / temp2;
+        if (ratio <= min)
         {
           min = ratio;
           np = p;
         }
+        //cprintf("pid: %d , ratio: %d\n",p->pid,(int)(ratio*1000));
       }
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
+
+     // cprintf("pid with minimum ratio: %d, ratio: %d\n",np->pid,(int)(min*1000));
       if (np != 0 && np->state==RUNNABLE)
       {
         //cprintf(",,,%x\n", cpuid());
