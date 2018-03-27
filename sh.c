@@ -154,7 +154,9 @@ getcmd(char *buf, int nbuf)
 }
 
 char * hist[MAX_HISTORY];
+int shiftedAlready=0;
 void shiftHistoryArray(char * newStr){
+  if(hist[MAX_HISTORY-1]!=0)shiftedAlready=1;
   int i=0;
   for(i =MAX_HISTORY-1;i>0;i--){
     hist[i]=hist[i-1];
@@ -208,13 +210,14 @@ char* replaceVars(char *buf){
         else newStr[j++]=buf[i];
        
     for(i=i+1;i<strlen(buf);i++)
-        if(buf[i]=='$' || buf[i]==' ' || buf[i]==10){
+        if(buf[i]=='$' || buf[i]==' ' || buf[i]==10)
             break;
-        }else
+        else
             var[start++]=buf[i];
-
+        i=i-5;
         if(start>0){
         getVariable(var,newStr+j);
+        printf(2,"%s,%s--\n",var,newStr+j);
         j=strlen(newStr);
         }
         if(i>=strlen(buf))
@@ -222,6 +225,8 @@ char* replaceVars(char *buf){
         start=0;
         memset(var,0,32);
     }
+    //for(i=0;i<128;i++)buf[i]=newStr[i];
+    printf(2,"*****%s\n",newStr);
     strcpy(buf,newStr);
     return buf;
 }
@@ -229,8 +234,9 @@ char* replaceVars(char *buf){
 
 
 void processcmd(char *buf){
-    
+  printf(2,"%s\n",buf);
            buf=replaceVars(buf);
+           printf(2,"%s\n",buf);
      if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Chdir must be called by the parent, not the child.
       buf[strlen(buf)-1] = 0;  // chop \n
@@ -247,7 +253,10 @@ void processcmd(char *buf){
                 break;
               }
             }
-            buf=hist[size-i];
+           // if(shiftedAlready)
+              buf=hist[size-i+1];
+            //else 
+             // buf=hist[size-i];
             processcmd(buf);
             return;
     }
@@ -259,10 +268,12 @@ void processcmd(char *buf){
         }
         return;
     }
-
-
-    if(fork1() == 0)
+    int pid=fork1();
+    if(pid == 0)
       runcmd(parsecmd(buf));
+    //int a=0;int b=0;int c=0;
+    //wait2(pid,&a,&b,&c);
+    //printf(2, "%d,%d\n", c,b);
     wait();   
 
 }
